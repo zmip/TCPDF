@@ -740,13 +740,13 @@ class TCPDF {
 	 * HTML PARSER: indent amount for lists.
 	 * @protected
 	 */
-	protected $listindent = 0;
+	protected $listindents = array();
 
 	/**
 	 * HTML PARSER: current list indententation level.
 	 * @protected
 	 */
-	protected $listindentlevel = 0;
+	protected $listindentlevels = array();
 
 	/**
 	 * Current background color.
@@ -930,7 +930,7 @@ class TCPDF {
 	 * Use kern pairs in fonts (when present).
 	 * @protected
 	 */
-	protected $kern_pairs = false;
+	protected $use_kern_pairs = false;
 
 	/**
 	 * PDF viewer preferences.
@@ -1106,13 +1106,6 @@ class TCPDF {
 	 * @since 4.2.001 (2008-10-30)
 	 */
 	protected $tagvspaces = array();
-
-	/**
-	 * HTML PARSER: custom indent amount for lists. Negative value means disabled.
-	 * @protected
-	 * @since 4.2.007 (2008-11-12)
-	 */
-	protected $customlistindent = -1;
 
 	/**
 	 * Boolean flag to indicate if the border of the cell sides that cross the page should be removed.
@@ -2013,6 +2006,15 @@ class TCPDF {
 		$this->header_xobj_autoreset = false;
 		$this->custom_xmp = '';
 		$this->custom_xmp_rdf = '';
+
+		$indent = $this->GetStringWidth('000000'); // default list indent
+		$this->listindents = array(
+			'ul' 			=> $indent,
+			'ol' 			=> $indent,
+			'dd' 			=> $indent,
+			'blockquote'	=> $indent,
+		);
+
 		// Call cleanup method after script execution finishes or exit() is called.
 		// NOTE: This will not be executed if the process is killed with a SIGTERM or SIGKILL signal.
 		register_shutdown_function(array($this, '_destroy'), true);
@@ -17310,12 +17312,8 @@ Putting 1 is equivalent to putting 0 and calling Ln() just after. Default value:
 				$this->rMargin += $this->cell_padding['R'];
 			}
 		}
-		if ($this->customlistindent >= 0) {
-			$this->listindent = $this->customlistindent;
-		} else {
-			$this->listindent = $this->GetStringWidth('000000');
-		}
-		$this->listindentlevel = 0;
+
+		$this->listindentlevels = array();
 		// save previous states
 		$prev_cell_height_ratio = $this->cell_height_ratio;
 		$prev_listnum = $this->listnum;
@@ -19082,18 +19080,20 @@ Putting 1 is equivalent to putting 0 and calling Ln() just after. Default value:
 				break;
 			}
 			case 'dd': {
+				$indent = $this->listindents[ $tag['value'] ];
 				if ($this->rtl) {
-					$this->rMargin += $this->listindent;
+					$this->rMargin += $indent;
 				} else {
-					$this->lMargin += $this->listindent;
+					$this->lMargin += $indent;
 				}
-				++$this->listindentlevel;
+				array_push( $this->listindentlevels, $indent );
 				$this->addHTMLVertSpace($hbz, $hb, $cell, $firsttag);
 				break;
 			}
 			case 'ul':
 			case 'ol': {
 				++$this->listnum;
+				$indent = $this->listindents[ $tag['value'] ];
 				if ($tag['value'] == 'ol') {
 					$this->listordered[$this->listnum] = true;
 				} else {
@@ -19105,13 +19105,13 @@ Putting 1 is equivalent to putting 0 and calling Ln() just after. Default value:
 					$this->listcount[$this->listnum] = 0;
 				}
 				if ($this->rtl) {
-					$this->rMargin += $this->listindent;
-					$this->x -= $this->listindent;
+					$this->rMargin += $indent;
+					$this->x -= $indent;
 				} else {
-					$this->lMargin += $this->listindent;
-					$this->x += $this->listindent;
+					$this->lMargin += $indent;
+					$this->x += $indent;
 				}
-				++$this->listindentlevel;
+				array_push( $this->listindentlevels, $indent );
 				if ($this->listnum == 1) {
 					if ($key > 1) {
 						$this->addHTMLVertSpace($hbz, $hb, $cell, $firsttag);
@@ -19155,12 +19155,13 @@ Putting 1 is equivalent to putting 0 and calling Ln() just after. Default value:
 				break;
 			}
 			case 'blockquote': {
+				$indent = $this->listindents[ $tag['value'] ];
 				if ($this->rtl) {
-					$this->rMargin += $this->listindent;
+					$this->rMargin += $indent;
 				} else {
-					$this->lMargin += $this->listindent;
+					$this->lMargin += $indent;
 				}
-				++$this->listindentlevel;
+				array_push( $this->listindentlevels, $indent );
 				$this->addHTMLVertSpace($hbz, $hb, $cell, $firsttag);
 				break;
 			}
@@ -19926,12 +19927,13 @@ Putting 1 is equivalent to putting 0 and calling Ln() just after. Default value:
 				break;
 			}
 			case 'blockquote': {
+				$indent = $this->listindents[ $tag['value'] ];
 				if ($this->rtl) {
-					$this->rMargin -= $this->listindent;
+					$this->rMargin -= $indent;
 				} else {
-					$this->lMargin -= $this->listindent;
+					$this->lMargin -= $indent;
 				}
-				--$this->listindentlevel;
+				array_pop( $this->listindentlevels );
 				$this->addHTMLVertSpace($hbz, $hb, $cell, false, $lasttag);
 				break;
 			}
@@ -19962,25 +19964,27 @@ Putting 1 is equivalent to putting 0 and calling Ln() just after. Default value:
 			}
 			case 'dd': {
 				$this->lispacer = '';
+				$indent = $this->listindents[ $tag['value'] ];
 				if ($this->rtl) {
-					$this->rMargin -= $this->listindent;
+					$this->rMargin -= $indent;
 				} else {
-					$this->lMargin -= $this->listindent;
+					$this->lMargin -= $indent;
 				}
-				--$this->listindentlevel;
+				array_pop( $this->listindentlevels );
 				$this->addHTMLVertSpace(0, 0, $cell, false, $lasttag);
 				break;
 			}
 			case 'ul':
 			case 'ol': {
 				--$this->listnum;
+				$indent = $this->listindents[ $tag['value'] ];
 				$this->lispacer = '';
 				if ($this->rtl) {
-					$this->rMargin -= $this->listindent;
+					$this->rMargin -= $indent;
 				} else {
-					$this->lMargin -= $this->listindent;
+					$this->lMargin -= $indent;
 				}
-				--$this->listindentlevel;
+				array_pop( $this->listindentlevels );
 				if ($this->listnum <= 0) {
 					$this->listnum = 0;
 					$this->addHTMLVertSpace($hbz, $hb, $cell, false, $lasttag);
@@ -20355,12 +20359,22 @@ Putting 1 is equivalent to putting 0 and calling Ln() just after. Default value:
 
 	/**
 	 * Set custom width for list indentation.
+	 * @param $listType (string) type, options are: ul, ol, dd, blockquote, or array in form of [tag => w, tag => w]
 	 * @param $width (float) width of the indentation. Use negative value to disable it.
 	 * @public
 	 * @since 4.2.007 (2008-11-12)
 	 */
-	public function setListIndentWidth($width) {
-		return $this->customlistindent = floatval($width);
+	public function setListIndentWidth( $listType, $width = 0 ) {
+		if ( is_array($listType)){
+			foreach($listType as $tag => $width) {
+				if ( isset( $this->listindents[ $tag ] ) ) $this->listindents[ $tag ] = $width;
+			}
+			return 0;
+		}
+		if ( ! isset( $this->listindents[ $listType ] ) ) return 0;
+		$width = floatval( $width );
+		$this->listindents[ $listType ] = $width;
+		return $width;
 	}
 
 	/**
@@ -20704,8 +20718,8 @@ Putting 1 is equivalent to putting 0 and calling Ln() just after. Default value:
 			'bgcolor' => $this->bgcolor,
 			'fgcolor' => $this->fgcolor,
 			'htmlvspace' => $this->htmlvspace,
-			'listindent' => $this->listindent,
-			'listindentlevel' => $this->listindentlevel,
+			'listindents' => $this->listindents,
+			'listindentlevels' => $this->listindentlevels,
 			'listnum' => $this->listnum,
 			'listordered' => $this->listordered,
 			'listcount' => $this->listcount,
@@ -20767,8 +20781,8 @@ Putting 1 is equivalent to putting 0 and calling Ln() just after. Default value:
 		$this->bgcolor = $gvars['bgcolor'];
 		$this->fgcolor = $gvars['fgcolor'];
 		$this->htmlvspace = $gvars['htmlvspace'];
-		$this->listindent = $gvars['listindent'];
-		$this->listindentlevel = $gvars['listindentlevel'];
+		$this->listindents = $gvars['listindents'];
+		$this->listindentlevels = $gvars['listindentlevels'];
 		$this->listnum = $gvars['listnum'];
 		$this->listordered = $gvars['listordered'];
 		$this->listcount = $gvars['listcount'];
@@ -21907,7 +21921,7 @@ Putting 1 is equivalent to putting 0 and calling Ln() just after. Default value:
 			}
 			$xshift = $this->colxshift;
 			// set X position of the current column by case
-			$listindent = ($this->listindentlevel * $this->listindent);
+			$listindent = array_sum( $this->listindentlevels );
 			// calculate column X position
 			$colpos = 0;
 			for ($i = 0; $i < $col; ++$i) {
